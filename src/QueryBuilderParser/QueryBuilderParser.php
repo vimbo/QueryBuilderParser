@@ -253,6 +253,34 @@ class QueryBuilderParser
             return $this->makeQueryWhenNull($query, $rule, $sqlOperator, $condition);
         }
 
+        //Adiciona o $expr para pesquisar as datas por Y-m-d e não precisar colocar H:i:s
+        if(strpos($rule->field, '_queryBuilder') !== false && strpos($rule->field, '_data') !== false){
+            $conversion = [
+                '=' => '$eq',
+                '!=' => '$ne',
+                '<>' => '$ne',
+                '<' => '$lt',
+                '<=' => '$lte',
+                '>' => '$gt',
+                '>=' => '$gte',
+            ];
+
+            if(isset($conversion[$sqlOperator['operator']])){
+                return $query->whereRaw([
+                    '$expr' => [
+                        $conversion[$sqlOperator['operator']] => [
+                            $value, [
+                                '$dateToString' => [
+                                    'date' => '$'.$rule->field, 
+                                    'format' => "%Y-%m-%d"
+                                ]
+                            ]
+                        ]
+                    ]
+                ], [], $condition);
+            }
+        }
+
         return $query->where($rule->field, $sqlOperator['operator'], $value, $condition);
     }
 
