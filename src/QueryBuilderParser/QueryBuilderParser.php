@@ -188,9 +188,10 @@ class QueryBuilderParser
         /*
         *  Turn datetime into Carbon object so that it works with "between" operators etc.
         */
+        /* Não transforma aqui, transformo mais pra baixo
         if ($rule->type == 'date') {
             $value = $this->convertDatetimeToCarbon($value);
-        }
+        }*/
 
         return $this->appendOperatorIfRequired($requireArray, $value, $sqlOperator);
     }
@@ -253,18 +254,13 @@ class QueryBuilderParser
             return $this->makeQueryWhenNull($query, $rule, $sqlOperator, $condition);
         }
 
-        //Adiciona o $expr para pesquisar as datas por Y-m-d e não precisar colocar H:i:s
-        if(strpos($rule->field, '_queryBuilder') !== false && strpos($rule->field, '_data') !== false){
-            $conversion = [
-                '=' => '$eq',
-                '!=' => '$ne',
-                '<>' => '$ne',
-                '<' => '$lt',
-                '<=' => '$lte',
-                '>' => '$gt',
-                '>=' => '$gte',
-            ];
-
+        //Adiciona o $expr para pesquisar as datas por Y-m-d e não precisar colocar H:i:s, só com esses operadores porque o mongo irá tratar a data como string
+        $conversion = [
+            '=' => '$eq',
+            '!=' => '$ne',
+            '<>' => '$ne',
+        ];
+        if(strpos($rule->field, '_queryBuilder') !== false && strpos($rule->field, '_data') !== false && array_key_exists($sqlOperator['operator'], $conversion)){
             if(isset($conversion[$sqlOperator['operator']])){
                 return $query->whereRaw([
                     '$expr' => [
@@ -278,6 +274,12 @@ class QueryBuilderParser
                         ]
                     ]
                 ], [], $condition);
+            }
+        }else if(strpos($rule->field, '_queryBuilder') !== false && strpos($rule->field, '_data') !== false){
+            try{
+                $value = new \MongoDB\BSON\UTCDateTime(strtotime($value) * 1000);
+            }catch(\Exception $e){
+                //Do nothing
             }
         }
 
