@@ -248,26 +248,23 @@ class QueryBuilderParser
         $operator = $sqlOperator['operator'];
         $condition = strtolower($queryCondition);
 
-        if ($this->operatorRequiresArray($operator)) {
-            return $this->makeQueryWhenArray($query, $rule, $sqlOperator, $value, $condition);
-        } elseif ($this->operatorIsNull($operator)) {
-            return $this->makeQueryWhenNull($query, $rule, $sqlOperator, $condition);
-        }
-
         //Adiciona o $expr para pesquisar as datas por Y-m-d e não precisar colocar H:i:s, só com esses operadores porque o mongo irá tratar a data como string
         $conversion = [
             '=' => '$eq',
             '!=' => '$ne',
-            '<>' => '$ne',
+            '<>' => '$ne'
         ];
-        if(strpos($rule->field, '_queryBuilder') !== false && strpos($rule->field, '_data') !== false && array_key_exists($sqlOperator['operator'], $conversion)){
+        $isDate = strpos($rule->field, '_data') !== false || strpos($rule->field, 'data_') !== false;
+        if(strpos($rule->field, '_queryBuilder') !== false && $isDate && array_key_exists($sqlOperator['operator'], $conversion)){
             if(isset($conversion[$sqlOperator['operator']])){
+                $ex = explode('T', $value);
+                $value = isset($ex[0]) ? $ex[0] : $value;
                 return $query->whereRaw([
                     '$expr' => [
                         $conversion[$sqlOperator['operator']] => [
                             $value, [
                                 '$dateToString' => [
-                                    'date' => '$'.$rule->field, 
+                                    'date' => '$'.$rule->field,
                                     'format' => "%Y-%m-%d"
                                 ]
                             ]
@@ -275,15 +272,38 @@ class QueryBuilderParser
                     ]
                 ], [], $condition);
             }
-        }else if(strpos($rule->field, '_queryBuilder') !== false && strpos($rule->field, '_data') !== false){
-            try{
-                $value = new \MongoDB\BSON\UTCDateTime(strtotime($value) * 1000);
-            }catch(\Exception $e){
-                //Do nothing
+        }else if(strpos($rule->field, '_queryBuilder') !== false && $isDate){
+            if(is_array($value)){
+                foreach($value as $k => $val){
+                    $value[$k] = $this->transformMongoData($val);
+                }
+            }else{
+                $value = $this->transformMongoData($value);
             }
         }
 
+        if ($this->operatorRequiresArray($operator)) {
+            return $this->makeQueryWhenArray($query, $rule, $sqlOperator, $value, $condition);
+        } elseif ($this->operatorIsNull($operator)) {
+            return $this->makeQueryWhenNull($query, $rule, $sqlOperator, $condition);
+        }
+
         return $query->where($rule->field, $sqlOperator['operator'], $value, $condition);
+    }
+
+    /**
+     * @param  mixed $val
+     * @return \MongoDB\BSON\UTCDateTime|$val
+     */
+    protected function transformMongoData($val = ''){
+        try{
+            return new \MongoDB\BSON\UTCDateTime(strtotime($val) * 1000);
+        }catch(\Exception $e){
+            //dd($e->getMessage());
+            //Do nothing
+        }
+
+        return $val;
     }
 
     /**
@@ -312,6 +332,7 @@ class QueryBuilderParser
          * If the SQL Operator is set not to have a value, make sure that we set the value to null.
          */
         if ($this->operators[$rule->operator]['accept_values'] === false) {
+            die('false');
             return $this->operatorValueWhenNotAcceptingOne($rule);
         }
 
